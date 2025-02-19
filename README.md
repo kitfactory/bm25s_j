@@ -1,3 +1,40 @@
+# bm25s-j
+
+本プロジェクトは[bm25s](https://github.com/xhluca/bm25s)の日本語対応版です。
+標準でjanomeを使用し、日本語のストップワードを適当にいれたものです。
+Stemmerは特に対応していません。
+オリジナルがMITライセンスですので、こちらもMITライセンスです。
+
+時間があればトークナイザもより高速なものを使用するかもしれませんが、まずは環境構築が簡単なようにPythonだけで動くようにしています。
+
+## オリジナルプロジェクト
+https://github.com/xhluca/bm25s
+
+## インストール
+
+```bash
+pip install bm25s-j
+
+# オリジナルのbm25sの使用方法と同じです。
+pip install bm25s[full]
+
+# top-k選択のプロセスの高速化で`jax`をインストールします。
+pip install jax[cpu]
+```
+
+## 使用方法
+
+オリジナルのbm25sの使用方法と同じです。
+
+
+```python
+import bm25s
+
+
+----
+
+# オリジナルのbm25sのREADME
+
 <div align="center">
 
 <h1>BM25-Sparse⚡</h1>

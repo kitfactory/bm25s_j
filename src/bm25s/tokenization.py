@@ -484,7 +484,7 @@ def tokenize(
     texts: Union[str, List[str]],
     lower: bool = True,
     token_pattern: str = r"(?u)\b\w\w+\b",
-    stopwords: Union[str, List[str]] = "english",
+    stopwords: Union[str, List[str]] = "japanese",
     stemmer: Callable = None,  # type: ignore
     return_ids: bool = True,
     show_progress: bool = True,

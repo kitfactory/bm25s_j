@@ -1,7 +1,7 @@
 # English: Project metadata / 日本語: プロジェクトのメタデータ
 [project]
 name = "bm25s-j"  #プロジェクト名をbm25s_Jに更新
-version = "0.1.0" 
+version = { file = "src/bm25s/version.py", attr = "__version__" }
 description = "Japanese version of bm25s."
 readme = "README.md"  # English: Readme file / 日本語: 説明ファイル
 requires-python = ">=3.8" 

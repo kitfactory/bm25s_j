@@ -1,3 +1,4 @@
+from .version import __version__
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
 from functools import partial
