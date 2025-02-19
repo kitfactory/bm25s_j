@@ -69,6 +69,7 @@ def _build_nonoccurrence_array(
     b,
     delta,
     dtype="float32",
+    use_log_normalization=False,
 ) -> np.ndarray:
     """
     The non-occurrence array is used to store the idf score for tokens that do not occur in the
@@ -89,57 +90,66 @@ def _build_nonoccurrence_array(
     for token_id, df in doc_frequencies.items():
         idf = compute_idf_fn(df, N=n_docs)
         tfc = calculate_tfc_fn(
-            tf_array=0, l_d=l_d, l_avg=l_avg, k1=k1, b=b, delta=delta
+            tf_array=0, l_d=l_d, l_avg=l_avg, k1=k1, b=b, delta=delta, use_log_normalization=use_log_normalization
         )
         nonoccurrence_array[token_id] = idf * tfc
 
     return nonoccurrence_array
 
 
-def _score_tfc_robertson(tf_array, l_d, l_avg, k1, b, delta=None):
+def _score_tfc_robertson(tf_array, l_d, l_avg, k1, b, delta=None, use_log_normalization=False):
     """
-    Computes the term frequency component of the BM25 score using Robertson+ (original) variant
+    Computes the term frequency component using Robertson's variant.
+    If use_log_normalization is True, l_d and l_avg are transformed via log(1+value).
+    日本語: Robertson版のtf成分を計算します。use_log_normalizationがTrueの場合、l_dとl_avgをlog(1+value)に変換します。
+    """
+    if use_log_normalization:
+        l_d = math.log(1 + l_d)
+        l_avg = math.log(1 + l_avg)
+    return tf_array / (k1 * ((1 - b) + b * (l_d / l_avg)) + tf_array)
+
+
+def _score_tfc_lucene(tf_array, l_d, l_avg, k1, b, delta=None, use_log_normalization=False):
+    """
+    Computes the term frequency component using Lucene variant (accurate)
     Implementation: https://cs.uwaterloo.ca/~jimmylin/publications/Kamphuis_etal_ECIR2020_preprint.pdf
     """
-    # idf component is given by the idf_array
-    # we calculate the term-frequency component (tfc)
-    return tf_array / (k1 * ((1 - b) + b * l_d / l_avg) + tf_array)
+    return _score_tfc_robertson(tf_array, l_d, l_avg, k1, b, delta, use_log_normalization)
 
 
-def _score_tfc_lucene(tf_array, l_d, l_avg, k1, b, delta=None):
+def _score_tfc_atire(tf_array, l_d, l_avg, k1, b, delta=None, use_log_normalization=False):
     """
-    Computes the term frequency component of the BM25 score using Lucene variant (accurate)
+    Computes the term frequency component using ATIRE variant
     Implementation: https://cs.uwaterloo.ca/~jimmylin/publications/Kamphuis_etal_ECIR2020_preprint.pdf
     """
-    return _score_tfc_robertson(tf_array, l_d, l_avg, k1, b)
+    if use_log_normalization:
+        l_d = math.log(1 + l_d)
+        l_avg = math.log(1 + l_avg)
+    return (tf_array * (k1 + 1)) / (tf_array + k1 * (1 - b + b * (l_d / l_avg)))
 
 
-def _score_tfc_atire(tf_array, l_d, l_avg, k1, b, delta=None):
+def _score_tfc_bm25l(tf_array, l_d, l_avg, k1, b, delta, use_log_normalization=False):
     """
-    Computes the term frequency component of the BM25 score using ATIRE variant
+    Computes the term frequency component using BM25L variant
     Implementation: https://cs.uwaterloo.ca/~jimmylin/publications/Kamphuis_etal_ECIR2020_preprint.pdf
     """
-    # idf component is given by the idf_array
-    # we calculate the term-frequency component (tfc)
-    return (tf_array * (k1 + 1)) / (tf_array + k1 * (1 - b + b * l_d / l_avg))
-
-
-def _score_tfc_bm25l(tf_array, l_d, l_avg, k1, b, delta):
-    """
-    Computes the term frequency component of the BM25 score using BM25L variant
-    Implementation: https://cs.uwaterloo.ca/~jimmylin/publications/Kamphuis_etal_ECIR2020_preprint.pdf
-    """
-    c_array = tf_array / (1 - b + b * l_d / l_avg)
+    if use_log_normalization:
+        l_d = math.log(1 + l_d)
+        l_avg = math.log(1 + l_avg)
+    c_array = tf_array / (1 - b + b * (l_d / l_avg))
     return ((k1 + 1) * (c_array + delta)) / (k1 + c_array + delta)
 
 
-def _score_tfc_bm25plus(tf_array, l_d, l_avg, k1, b, delta):
+def _score_tfc_bm25plus(tf_array, l_d, l_avg, k1, b, delta, use_log_normalization=False):
     """
-    Computes the term frequency component of the BM25 score using BM25+ variant
+    Computes the term frequency component using BM25+ variant
     Implementation: https://cs.uwaterloo.ca/~jimmylin/publications/Kamphuis_etal_ECIR2020_preprint.pdf
     """
+    if use_log_normalization:
+        l_d = math.log(1 + l_d)
+        l_avg = math.log(1 + l_avg)
     num = (k1 + 1) * tf_array
-    den = k1 * (1 - b + b * l_d / l_avg) + tf_array
+    den = k1 * (1 - b + b * (l_d / l_avg)) + tf_array
     return (num / den) + delta
 
 
@@ -241,6 +251,7 @@ def _build_scores_and_indices_for_matrix(
     int_dtype="int32",
     show_progress=True,
     leave_progress=False,
+    use_log_normalization=False,
 ):
     array_size = sum(doc_frequencies.values())
 
@@ -271,7 +282,13 @@ def _build_scores_and_indices_for_matrix(
 
         # Calculate the BM25 score for each token in the document
         tfc = calculate_tfc(
-            tf_array=tf_array, l_d=doc_len, l_avg=avg_doc_len, k1=k1, b=b, delta=delta
+            tf_array=tf_array,
+            l_d=doc_len,
+            l_avg=avg_doc_len,
+            k1=k1,
+            b=b,
+            delta=delta,
+            use_log_normalization=use_log_normalization
         )
         idf = idf_array[voc_ind_doc]
         scores_doc = idf * tfc

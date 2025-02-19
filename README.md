@@ -2,6 +2,7 @@
 
 本プロジェクトは[bm25s](https://github.com/xhluca/bm25s)の日本語対応版です。
 標準でjanomeを使用し、日本語のストップワードを適当にいれたものです。
+またBM25におけるテキストの長さによるスコアへの影響を緩和するため、対数正規化を入れ、影響を緩和するオプションを追加しました。(use_log_normalization=True,デフォルトでON)
 Stemmerは特に対応していません。
 オリジナルがMITライセンスですので、こちらもMITライセンスです。
 
@@ -46,7 +47,7 @@ def main():
     print(corpus_tokens)
 
     # BM25を作成します。
-    retriever = bm25s.BM25()
+    retriever = bm25s.BM25() # 文書長の対数正規化補正をしない場合、use_log_normalization=False
     retriever.index(corpus_tokens)
 
     # クエリを日本語でトークン化します。
