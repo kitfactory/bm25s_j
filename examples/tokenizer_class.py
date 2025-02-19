@@ -123,6 +123,27 @@ def main(data_dir="datasets", dataset="scifact"):
     shutil.rmtree(your_index_dir)
 
 
+def main_sample():
+    # サンプルテキスト（英語と日本語）
+    texts = [
+        "This is a sample English text.",
+        "Another example for tokenization.",
+        "これは日本語の文章です。",
+        "Mixing English and 日本語 in one sentence."
+    ]
+
+    # 基本的なトークナイザーの使用
+    tokenizer = Tokenizer()
+    result = tokenizer.tokenize(texts)
+    
+    print("基本的なトークン化:")
+    for i, (text, tokens) in enumerate(zip(texts, result.ids)):
+        print(f"\n元の文章 {i+1}: {text}")
+        tokens_str = tokenizer.decode([tokens])[0]
+        print(f"トークン: {tokens_str}")
+
+
 if __name__ == "__main__":
     main()
+    main_sample()
 

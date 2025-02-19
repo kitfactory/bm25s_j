@@ -1,0 +1,69 @@
+# English: Project metadata / 日本語: プロジェクトのメタデータ
+[project]
+name = "bm25s-j"  #プロジェクト名をbm25s_Jに更新
+version = "0.1.0" 
+description = "Japanese version of bm25s."
+readme = "README.md"  # English: Readme file / 日本語: 説明ファイル
+requires-python = ">=3.8" 
+dependencies = [
+    "scipy",  # English: scipy for numerical computations / 日本語: 数値計算用scipy
+    "numpy",   # English: numpy for numerical operations / 日本語: 数値演算用numpy
+    "psutil",   # English: psutil for cross-platform resource monitoring / 日本語: クロスプラットフォームのリソース監視用psutil
+    "janome"    # English: janome for Japanese morphological analysis / 日本語: 日本語形態素解析用janome
+]
+
+# English: Optional dependencies for development / 日本語: 開発用のオプショナル依存関係
+[project.optional-dependencies]
+core = [
+    "orjson",    # 高速なJSONパーサー orjson
+    "tqdm",      # 進捗バー用tqdm
+    "PyStemmer", # 形態素解析のためのPyStemmer
+    "numba",     # JITコンパイル用numba
+    "janome"     # 日本語形態素解析用janome
+]
+
+stem = ["PyStemmer"]  # 形態素解析用の依存関係としてのPyStemmer
+hf = ["huggingface_hub"]  # Hugging Face連携のための依存関係
+dev = [
+    "black",      # コード整形用の開発依存関係black
+    "pytest>=8.0.0",  # テスト用フレームワーク
+    "pytest-cov>=4.1.0"  # テストカバレッジレポートツール
+]
+selection = ["jax[cpu]"]  # 選択処理のための依存関係jax[cpu]
+evaluation = ["pytrec_eval"]  # 評価用の依存関係pytrec_eval
+
+full = [
+    "orjson",
+    "tqdm",
+    "PyStemmer",
+    "numba",
+    "janome",
+    "huggingface_hub",
+    "black",
+    "jax[cpu]",
+    "pytrec_eval",
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0"
+]
+
+unix = []  # English: On Unix-like systems (Linux, darwin), the 'resource' module is part of the standard library and does not require separate installation. / 日本語: Unix系システム（Linux, darwin）ではresourceモジュールは標準搭載のため、追加の依存関係は不要です。
+
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]  # English: Directory containing test files / 日本語: テストファイルが配置されているディレクトリ
+python_files = ["test_*.py"]  # English: Pattern for test file names / 日本語: テストファイル名のパターン
+addopts = [
+    "--import-mode=importlib",  # English: Use importlib mode for test imports / 日本語: テストインポートにimportlibモードを使用
+    "--cov=bm25s",             # English: Specify the module for coverage analysis / 日本語: カバレッジ解析対象のモジュールを指定
+    "--cov-report=term-missing",  # English: Show missing coverage report in the terminal / 日本語: 端末に不足しているカバレッジ情報を出力
+] 
+
+[tool.setuptools]
+package-dir = {"" = "src"}  # English: Specify that packages are located in the src directory / 日本語: パッケージがsrcディレクトリにあることを指定
+
+[tool.setuptools.packages.find]
+where = ["src"]  # English: Find packages in the src directory / 日本語: srcディレクトリ内のパッケージを探索
+include = ["bm25s", "bm25s.*"]  # English: Include the bm25s package and its subpackages / 日本語: bm25sパッケージとそのサブパッケージを含む 
