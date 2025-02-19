@@ -1,5 +1,6 @@
 # サンプルコード
 import bm25s
+import math
 
 def main():
     # https://ja.wikipedia.org/wiki/%E6%9A%81%E7%BE%8E%E3%81%BB%E3%82%80%E3%82%89
@@ -15,7 +16,7 @@ def main():
     corpus_tokens = bm25s.tokenize(corpus, stopwords="japanese")
     print(corpus_tokens)
 
-    retriever = bm25s.BM25()
+    retriever = bm25s.BM25(use_log_normalization=False)
     retriever.index(corpus_tokens)
 
     query = "ほむらは誰？"
@@ -43,6 +44,7 @@ def main():
     for i in range(results.shape[1]):
         doc, score = results[0, i], scores[0, i]
         print(f"Rank {i+1} (score: {score:.2f}): {doc}")
+
 
 if __name__ == "__main__":
     main()

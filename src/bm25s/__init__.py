@@ -143,6 +143,7 @@ class BM25:
         int_dtype="int32",
         corpus=None,
         backend="numpy",
+        use_log_normalization=True,
     ):
         """
         BM25S initialization.
@@ -182,6 +183,10 @@ class BM25:
             to use the numba backend, which requires the numba library. If you select `backend="auto"`,
             the function will use the numba backend if it is available, otherwise it will use the numpy
             backend.
+        
+        use_log_normalization : bool
+            If True, the term frequency will be normalized using the log function.
+            対数正規化を入れました。デフォルトはONです。
         """
         self.k1 = k1
         self.b = b
@@ -192,6 +197,7 @@ class BM25:
         self.idf_method = idf_method if idf_method is not None else method
         self.methods_requiring_nonoccurrence = ("bm25l", "bm25+")
         self.corpus = corpus
+        self.use_log_normalization = use_log_normalization
 #        self._original_version = __version__
 
         if backend == "auto":
