@@ -1,6 +1,5 @@
 from typing import List, Union, Callable
 from janome.tokenizer import Tokenizer as JanomeTokenizer
-from .tokenization import Tokenized, _infer_stopwords
 
 try:
     from tqdm.auto import tqdm
@@ -16,7 +15,7 @@ def tokenize(
     show_progress: bool = True,
     leave_progress: bool = False,
     allow_empty: bool = True,
-) -> Tokenized:
+) -> "Tokenized":
     """
     Tokenize Japanese text using Janome tokenizer.
     日本語テキストをJanomeトークナイザーを使用してトークン化します。
@@ -60,10 +59,13 @@ def tokenize(
     if isinstance(texts, str):
         texts = [texts]
 
+    # Lazy import of _infer_stopwords and Tokenized to avoid circular dependency
+    from .tokenization import _infer_stopwords, Tokenized
+
     # Initialize Janome tokenizer
     tokenizer = JanomeTokenizer()
     
-    # Process stopwords
+    # Process stopwords using the locally imported _infer_stopwords
     stopwords_set = set(_infer_stopwords(stopwords)) if stopwords else set()
 
     # Initialize vocabulary dictionary

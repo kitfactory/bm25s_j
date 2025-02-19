@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Union, Callable, NamedTuple
 import typing
 
 from bm25s.utils import json_functions
+from .janome import tokenize as janome_tokenize
 
 try:
     from tqdm.auto import tqdm
@@ -27,6 +28,7 @@ from .stopwords import (
     STOPWORDS_SWEDISH,
     STOPWORDS_NORWEGIAN,
     STOPWORDS_CHINESE,
+    STOPWORDS_JAPANSES,
 )
 
 
@@ -86,6 +88,11 @@ class Tokenizer:
             stemmer = stemmer.stemWord
         if not callable(stemmer) and stemmer is not None:
             raise ValueError("stemmer must be callable or have a `stemWord` method.")
+
+        if stopwords == "japanese":
+            from .janome import tokenize
+            print("path japanes tokenizer!!!!!!!!!!!!!!!!!!!")
+            self.tokenize = tokenize
 
         self.stopwords = _infer_stopwords(stopwords)
         self.splitter = splitter
@@ -469,6 +476,8 @@ def _infer_stopwords(stopwords: Union[str, List[str]]) -> Union[List[str], tuple
         return STOPWORDS_NORWEGIAN
     elif stopwords in ["chinese", "zh"]:
         return STOPWORDS_CHINESE
+    elif stopwords in ["japanese", "ja"]:
+        return STOPWORDS_JAPANSES
     elif stopwords in [None, False]:
         return []
     elif isinstance(stopwords, str):
@@ -549,6 +558,17 @@ def tokenize(
     You may pass a single string or a list of strings. If you pass a single string,
     this function will convert it to a list of strings with a single element.
     """
+    # If stopwords indicates Japanese language, delegate tokenization to janome.tokenize using all parameters.
+    if stopwords in ["japanese", "ja"]:
+        return janome_tokenize(
+            texts=texts,
+            lower=lower,
+            stopwords=stopwords,
+            show_progress=show_progress,
+            leave_progress=leave,
+            allow_empty=allow_empty,
+        )
+
     if isinstance(texts, str):
         texts = [texts]
 
