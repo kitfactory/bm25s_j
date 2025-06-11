@@ -14,6 +14,16 @@ else:
 def _topk_numpy(query_scores, k, sorted):
     # https://stackoverflow.com/questions/65038206/how-to-get-indices-of-top-k-values-from-a-numpy-array
     # np.argpartition is faster than np.argsort, but do not return the values in order
+    
+    n = len(query_scores)
+    
+    # Handle edge cases
+    # エッジケースを処理
+    if k > n:
+        k = n
+    if k == 0 or n == 0:
+        return np.array([], dtype=query_scores.dtype), np.array([], dtype=np.int32)
+    
     partitioned_ind = np.argpartition(query_scores, -k)
     # Since lit's a single query, we can take the last k elements
     partitioned_ind = partitioned_ind.take(indices=range(-k, 0))

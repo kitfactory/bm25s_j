@@ -88,6 +88,11 @@ def _numba_sorted_top_k(array: np.ndarray, k: int, sorted=True):
     n = len(array)
     if k > n:
         k = n
+    
+    # Handle edge case where k is 0 or array is empty
+    # k が 0 または配列が空の場合のエッジケースを処理
+    if k == 0 or n == 0:
+        return np.array([], dtype=array.dtype), np.array([], dtype=np.int32)
 
     values = np.zeros(k, dtype=array.dtype)  # aka scores
     indices = np.zeros(k, dtype=np.int32)

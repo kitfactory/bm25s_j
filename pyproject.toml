@@ -1,7 +1,7 @@
 # English: Project metadata / 日本語: プロジェクトのメタデータ
 [project]
 name = "bm25s-j"  #プロジェクト名をbm25s_Jに更新
-version = "0.1.1"
+version = "0.2.0"
 description = "Japanese version of bm25s."
 readme = "README.md"  # English: Readme file / 日本語: 説明ファイル
 requires-python = ">=3.8" 
@@ -67,3 +67,9 @@ package-dir = {"" = "src"}  # English: Specify that packages are located in the 
 [tool.setuptools.packages.find]
 where = ["src"]  # English: Find packages in the src directory / 日本語: srcディレクトリ内のパッケージを探索
 include = ["bm25s", "bm25s.*"]  # English: Include the bm25s package and its subpackages / 日本語: bm25sパッケージとそのサブパッケージを含む 
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-cov>=5.0.0",
+]

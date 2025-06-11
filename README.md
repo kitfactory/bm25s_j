@@ -80,6 +80,70 @@ if __name__ == "__main__":
     main()
 ```
 
+## 🚀 変更履歴 (Changelog)
+
+### バージョン 0.2.0 (2024-12-20)
+
+#### 🎉 新機能
+- **高度なメタデータフィルタリング機能**: 検索時に文書のメタデータを利用した高度なフィルタリングが可能になりました
+  - 基本的な equality フィルタリング (`{"category": "tech"}`)
+  - 複数条件 AND フィルタリング (`{"category": "tech", "language": "ja"}`)
+  - 比較演算子サポート (`{"score": {"$gte": 0.8}, "date": {"$lt": "2024-01-01"}}`)
+  - 配列操作 (`{"tags": {"$in": ["AI", "ML"]}, "category": {"$nin": ["draft"]}}`)
+  - 存在チェック (`{"author": {"$exists": True}}`)
+  - 正規表現フィルタリング (`{"title": {"$regex": "Python.*Tutorial"}}`)
+  - 論理演算子 (`{"$or": [{"category": "tech"}, {"difficulty": "beginner"}]}`)
+  - 複雑なネストした条件の完全サポート
+
+#### 💾 使用例
+```python
+import bm25s
+
+# メタデータ付きでインデックス作成
+corpus = ["文書1", "文書2", "文書3"]
+metadata = [
+    {"category": "tech", "difficulty": "beginner", "score": 0.9},
+    {"category": "science", "difficulty": "advanced", "score": 0.8},
+    {"category": "tech", "difficulty": "intermediate", "score": 0.95}
+]
+
+retriever = bm25s.BM25()
+corpus_tokens = bm25s.tokenize(corpus, stopwords="japanese")
+retriever.index(corpus_tokens, metadata=metadata)
+
+# 高度なフィルタリング検索
+query_tokens = bm25s.tokenize("検索クエリ", stopwords="japanese")
+results = retriever.retrieve(
+    query_tokens, 
+    k=5,
+    filter={
+        "category": "tech",
+        "score": {"$gte": 0.9},
+        "difficulty": {"$in": ["beginner", "intermediate"]}
+    }
+)
+```
+
+#### 🔧 技術的改善
+- BM25スコアリングシステムの統合問題を修正
+- フィルタリング適用時のスコア計算バグを解決
+- Weight mask適用の問題を修正
+- Numbaバックエンドでのweight_mask パラメータサポートを追加
+- `$exists: False` オペレーターの動作を修正
+- 動的k調整による境界エラーの防止
+- 空の結果に対する適切なハンドリングを実装
+
+#### 🧪 テスト強化
+- メタデータフィルタリングの包括的なテストスイートを追加
+- 高度な演算子のテストケースを充実
+- 複雑なネスト条件のテスト検証を実装
+
+#### 📋 互換性
+- 既存APIとの完全な後方互換性を維持
+- メタデータなしでの従来通りの動作を保証
+
+---
+
 # 以下、オリジナルのbm25sのREADME
 
 <div align="center">

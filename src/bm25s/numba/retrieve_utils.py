@@ -108,6 +108,14 @@ def _retrieve_numba_functional(
     og_n_threads = get_num_threads()
     set_num_threads(n_threads)
 
+    # Dynamic k adjustment for filtering in numba backend
+    # numba backendでのフィルタリング用動的k調整
+    original_k = k
+    if weight_mask is not None:
+        available_docs = np.sum(weight_mask > 0)
+        if available_docs < k:
+            logging.warning(f"Requested k={k} but only {available_docs} documents match filter conditions. Adjusting k to {available_docs}.")
+            k = max(1, available_docs)
 
     # convert query_tokens_ids from list of list to a flat 1-d np.ndarray with
     # pointers to the start of each query to be used to find the boundaries of each query

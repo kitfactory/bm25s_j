@@ -1,4 +1,4 @@
-from .version import __version__
+from .version import __version__, VERSION_INFO, RELEASE_DATE, RELEASE_NOTES
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
 from functools import partial
@@ -7,11 +7,12 @@ import os
 import logging
 from pathlib import Path
 import json
-from typing import Any, Tuple, Dict, Iterable, List, NamedTuple, Union
+from typing import Any, Tuple, Dict, Iterable, List, NamedTuple, Union, Optional
 
 import numpy as np
 
 from .utils import json_functions as json_functions
+from .filtering import MetadataFilter, validate_metadata
 
 try:
     from .numba import selection as selection_jit
@@ -57,13 +58,18 @@ logger.setLevel(logging.DEBUG)
 
 class Results(NamedTuple):
     """
-    NamedTuple with two fields: documents and scores. The `documents` field contains the
+    NamedTuple with fields: documents, scores, and optionally metadata. The `documents` field contains the
     retrieved documents or indices, while the `scores` field contains the scores of the
-    retrieved documents or indices.
+    retrieved documents or indices, and `metadata` contains the metadata for filtered results.
+    
+    文書、スコア、およびオプションでメタデータのフィールドを持つNamedTupleです。`documents`フィールドは取得された
+    文書またはインデックスを含み、`scores`フィールドは取得された文書またはインデックスのスコアを含み、
+    `metadata`はフィルタリングされた結果のメタデータを含みます。
     """
 
     documents: np.ndarray
     scores: np.ndarray
+    metadata: Optional[List[Dict[str, Any]]] = None
 
     def __len__(self):
         return len(self.documents)
@@ -72,10 +78,16 @@ class Results(NamedTuple):
     def merge(cls, results: List["Results"]) -> "Results":
         """
         Merge a list of Results objects into a single Results object.
+        Resultsオブジェクトのリストを単一のResultsオブジェクトにマージします。
         """
         documents = np.concatenate([r.documents for r in results], axis=0)
         scores = np.concatenate([r.scores for r in results], axis=0)
-        return cls(documents=documents, scores=scores)
+        metadata = None
+        if all(r.metadata is not None for r in results):
+            metadata = []
+            for r in results:
+                metadata.extend(r.metadata)
+        return cls(documents=documents, scores=scores, metadata=metadata)
 
 
 def get_unique_tokens(
@@ -144,6 +156,7 @@ class BM25:
         corpus=None,
         backend="numpy",
         use_log_normalization=True,
+        metadata=None,
     ):
         """
         BM25S initialization.
@@ -187,6 +200,12 @@ class BM25:
         use_log_normalization : bool
             If True, the term frequency will be normalized using the log function.
             対数正規化を入れました。デフォルトはONです。
+            
+        metadata : List[Dict[str, Any]], optional
+            List of metadata dictionaries, one for each document in the corpus.
+            Used for metadata-based filtering during retrieval.
+            コーパス内の各文書に対するメタデータ辞書のリストです。
+            検索時のメタデータベースフィルタリングに使用されます。
         """
         self.k1 = k1
         self.b = b
@@ -198,6 +217,16 @@ class BM25:
         self.methods_requiring_nonoccurrence = ("bm25l", "bm25+")
         self.corpus = corpus
         self.use_log_normalization = use_log_normalization
+        
+        # Initialize metadata filtering
+        # メタデータフィルタリングを初期化します
+        self.metadata = metadata
+        self.metadata_filter = None
+        if metadata is not None:
+            if validate_metadata(metadata):
+                self.metadata_filter = MetadataFilter(metadata)
+            else:
+                raise ValueError("Invalid metadata format provided")
 #        self._original_version = __version__
 
         if backend == "auto":
@@ -420,6 +449,7 @@ class BM25:
         create_empty_token=True,
         show_progress=True,
         leave_progress=False,
+        metadata=None,
     ):
         """
         Given a `corpus` of documents, create the BM25 index. The `corpus` can be either:
@@ -455,6 +485,12 @@ class BM25:
 
         leave_progress : bool
             If True, the progress bars will remain after the function completes.
+            
+        metadata : List[Dict[str, Any]], optional
+            List of metadata dictionaries, one for each document in the corpus.
+            If provided, enables metadata-based filtering during retrieval.
+            コーパス内の各文書に対するメタデータ辞書のリストです。
+            提供された場合、検索時にメタデータベースフィルタリングが可能になります。
         """
         inferred_corpus_obj = self._infer_corpus_object(corpus)
 
@@ -497,6 +533,15 @@ class BM25:
 
         # we create unique token IDs from the vocab_dict for faster lookup
         self.unique_token_ids_set = set(self.vocab_dict.values())
+        
+        # Initialize or update metadata filtering
+        # メタデータフィルタリングを初期化または更新します
+        if metadata is not None:
+            if validate_metadata(metadata):
+                self.metadata = metadata
+                self.metadata_filter = MetadataFilter(metadata)
+            else:
+                raise ValueError("Invalid metadata format provided during indexing")
 
     def get_tokens_ids(self, query_tokens: List[str]) -> List[int]:
         """
@@ -587,6 +632,16 @@ class BM25:
         else:
             scores_q = self.get_scores(query_tokens_single, weight_mask=weight_mask)
 
+        # Dynamic k adjustment for filtering
+        # フィルタリング用のk動的調整
+        if weight_mask is not None:
+            # Count available documents (non-zero weight mask)
+            # 利用可能な文書数をカウント（ゼロでないweight mask）
+            available_docs = np.sum(weight_mask > 0)
+            if available_docs < k:
+                logger.warning(f"Requested k={k} but only {available_docs} documents match filter conditions. Adjusting k to {available_docs}.")
+                k = max(1, available_docs)  # Ensure k is at least 1
+
         if backend.startswith("numba"):
             if selection_jit is None:
                 raise ImportError(
@@ -599,6 +654,19 @@ class BM25:
             topk_scores, topk_indices = selection.topk(
                 scores_q, k=k, sorted=sorted, backend=backend
             )
+
+        # Filter out zero-score results when weight mask is applied
+        # weight mask が適用された場合、ゼロスコア結果を除外
+        if weight_mask is not None:
+            non_zero_mask = topk_scores > 0
+            if np.any(non_zero_mask):
+                topk_scores = topk_scores[non_zero_mask]
+                topk_indices = topk_indices[non_zero_mask]
+            else:
+                # If all scores are zero, return empty arrays
+                # すべてのスコアがゼロの場合、空の配列を返す
+                topk_scores = np.array([], dtype=self.dtype)
+                topk_indices = np.array([], dtype=self.int_dtype)
 
         return topk_scores, topk_indices
 
@@ -615,6 +683,8 @@ class BM25:
         chunksize: int = 50,
         backend_selection: str = "auto",
         weight_mask: np.ndarray = None,
+        filter: Dict[str, Any] = None,
+        return_metadata: bool = False,
     ):
         """
         Retrieve the top-k documents for each query (tokenized).
@@ -668,6 +738,15 @@ class BM25:
         weight_mask : np.ndarray
             A weight mask to filter the documents. If provided, the scores for the masked
             documents will be set to 0 to avoid returning them in the results.
+            
+        filter : Dict[str, Any], optional
+            Metadata filter conditions to apply before retrieval. Only documents matching
+            these conditions will be considered during search.
+            検索前に適用するメタデータフィルタ条件です。これらの条件に一致する文書のみが検索対象になります。
+            
+        return_metadata : bool, optional
+            If True and metadata is available, return metadata for the retrieved documents.
+            Trueでメタデータがある場合、取得された文書のメタデータを返します。
 
         Returns
         -------
@@ -749,6 +828,48 @@ class BM25:
             query_tokens = tokenization.convert_tokenized_to_string_list(query_tokens)
 
         corpus = corpus if corpus is not None else self.corpus
+        
+        # Apply metadata filtering if filter conditions are provided
+        # フィルタ条件が提供された場合、メタデータフィルタリングを適用します
+        if filter is not None:
+            if self.metadata_filter is None:
+                raise ValueError("No metadata available for filtering. Please provide metadata during initialization or indexing.")
+            
+            # Get filtered document indices
+            # フィルタリングされた文書インデックスを取得します
+            filtered_indices = self.metadata_filter.apply_filter(filter)
+            
+            if len(filtered_indices) == 0:
+                logger.warning("No documents match the provided filter conditions")
+                # Return empty results with correct structure for multiple queries
+                # 複数クエリ用の正しい構造で空の結果を返します
+                if return_as == "tuple":
+                    num_queries = len(query_tokens) if hasattr(query_tokens, '__len__') else 1
+                    empty_docs = np.array([np.array([], dtype=self.int_dtype) for _ in range(num_queries)], dtype=object)
+                    empty_scores = np.array([np.array([], dtype=self.dtype) for _ in range(num_queries)], dtype=object)
+                    empty_metadata = [[] for _ in range(num_queries)] if return_metadata else None
+                    
+                    empty_results = Results(
+                        documents=empty_docs,
+                        scores=empty_scores,
+                        metadata=empty_metadata
+                    )
+                    return empty_results
+                else:
+                    return np.array([], dtype=self.int_dtype)
+            
+            # Create weight mask from filtered indices
+            # フィルタリングされたインデックスからウェイトマスクを作成します
+            filter_weight_mask = self.metadata_filter.create_weight_mask(
+                filtered_indices, self.scores["num_docs"]
+            )
+            
+            # Combine with existing weight_mask if provided
+            # 既存のweight_maskと組み合わせます（提供されている場合）
+            if weight_mask is not None:
+                weight_mask = weight_mask * filter_weight_mask
+            else:
+                weight_mask = filter_weight_mask
 
         if weight_mask is not None:
             if not isinstance(weight_mask, np.ndarray):
@@ -798,10 +919,58 @@ class BM25:
                 dtype=self.dtype,
                 int_dtype=self.int_dtype,
                 nonoccurrence_array=self.nonoccurrence_array,
+                weight_mask=weight_mask,  # Pass weight_mask to numba backend
             )
 
             if return_as == "tuple":
-                return Results(documents=res[0], scores=res[1])
+                docs, scores = res[0], res[1]
+                
+                # Improved filtering for numba results
+                # numba結果の改善されたフィルタリング
+                if filter is not None or weight_mask is not None:
+                    filtered_docs = []
+                    filtered_scores = []
+                    
+                    for query_docs, query_scores in zip(docs, scores):
+                        # Keep only non-zero scores (filtered documents)
+                        # スコア0でないもののみを保持（フィルタリングされた文書）
+                        if len(query_scores) > 0:
+                            non_zero_mask = query_scores > 0
+                            if np.any(non_zero_mask):
+                                filtered_query_docs = query_docs[non_zero_mask]
+                                filtered_query_scores = query_scores[non_zero_mask]
+                            else:
+                                # No matching documents for this query
+                                # このクエリに一致する文書なし
+                                filtered_query_docs = np.array([], dtype=self.int_dtype)
+                                filtered_query_scores = np.array([], dtype=self.dtype)
+                        else:
+                            # Empty results for this query
+                            # このクエリの結果は空
+                            filtered_query_docs = np.array([], dtype=self.int_dtype)
+                            filtered_query_scores = np.array([], dtype=self.dtype)
+                        
+                        filtered_docs.append(filtered_query_docs)
+                        filtered_scores.append(filtered_query_scores)
+                    
+                    docs = np.array(filtered_docs, dtype=object)
+                    scores = np.array(filtered_scores, dtype=object)
+                
+                # Prepare metadata for numba results if requested
+                # numba結果に対してメタデータを準備します（要求された場合）
+                result_metadata = None
+                if return_metadata and self.metadata is not None:
+                    result_metadata = []
+                    for query_indices in docs:  # docs now contains filtered indices
+                        query_metadata = []
+                        if isinstance(query_indices, np.ndarray) and len(query_indices) > 0:
+                            for doc_idx in query_indices:
+                                if doc_idx < len(self.metadata):
+                                    query_metadata.append(self.metadata[doc_idx])
+                                else:
+                                    query_metadata.append({})
+                        result_metadata.append(query_metadata)
+                return Results(documents=docs, scores=scores, metadata=result_metadata)
             else:
                 return res
 
@@ -834,6 +1003,37 @@ class BM25:
 
         scores, indices = zip(*out)
         scores, indices = np.array(scores), np.array(indices)
+        
+        # Improved filtering for non-numba results
+        # 非numba結果の改善されたフィルタリング
+        if filter is not None or weight_mask is not None:
+            filtered_scores = []
+            filtered_indices = []
+            
+            for query_scores, query_indices in zip(scores, indices):
+                # Keep only non-zero scores (filtered documents)
+                # スコア0でないもののみを保持（フィルタリングされた文書）
+                if len(query_scores) > 0:
+                    non_zero_mask = query_scores > 0
+                    if np.any(non_zero_mask):
+                        filtered_query_scores = query_scores[non_zero_mask]
+                        filtered_query_indices = query_indices[non_zero_mask]
+                    else:
+                        # No matching documents for this query
+                        # このクエリに一致する文書なし
+                        filtered_query_scores = np.array([], dtype=self.dtype)
+                        filtered_query_indices = np.array([], dtype=self.int_dtype)
+                else:
+                    # Empty results for this query
+                    # このクエリの結果は空
+                    filtered_query_scores = np.array([], dtype=self.dtype)
+                    filtered_query_indices = np.array([], dtype=self.int_dtype)
+                
+                filtered_scores.append(filtered_query_scores)
+                filtered_indices.append(filtered_query_indices)
+            
+            scores = np.array(filtered_scores, dtype=object)
+            indices = np.array(filtered_indices, dtype=object)
 
         corpus = corpus if corpus is not None else self.corpus
 
@@ -846,12 +1046,40 @@ class BM25:
             elif isinstance(corpus, np.ndarray) and corpus.ndim == 1:
                 retrieved_docs = corpus[indices]
             else:
-                index_flat = indices.flatten().tolist()
-                results = [corpus[i] for i in index_flat]
-                retrieved_docs = np.array(results).reshape(indices.shape)
+                # Handle object arrays (from filtering)
+                # オブジェクト配列を処理（フィルタリングから）
+                if indices.dtype == object:
+                    retrieved_docs = []
+                    for query_indices in indices:
+                        query_docs = [corpus[i] for i in query_indices]
+                        retrieved_docs.append(np.array(query_docs))
+                    retrieved_docs = np.array(retrieved_docs, dtype=object)
+                else:
+                    index_flat = indices.flatten().tolist()
+                    results = [corpus[i] for i in index_flat]
+                    retrieved_docs = np.array(results).reshape(indices.shape)
+
+        # Prepare metadata for results if requested
+        # 要求された場合、結果用のメタデータを準備します
+        result_metadata = None
+        if return_metadata and self.metadata is not None:
+            result_metadata = []
+            for query_indices in indices:
+                query_metadata = []
+                # Handle object arrays (from filtering) and empty results
+                # オブジェクト配列（フィルタリングから）と空の結果を処理
+                if isinstance(query_indices, np.ndarray) and len(query_indices) > 0:
+                    for doc_idx in query_indices:
+                        if doc_idx < len(self.metadata):
+                            query_metadata.append(self.metadata[doc_idx])
+                        else:
+                            query_metadata.append({})
+                # query_metadata will be empty list for queries with no results
+                # 結果のないクエリに対してはquery_metadataは空のリストになります
+                result_metadata.append(query_metadata)
 
         if return_as == "tuple":
-            return Results(documents=retrieved_docs, scores=scores)
+            return Results(documents=retrieved_docs, scores=scores, metadata=result_metadata)
         elif return_as == "documents":
             return retrieved_docs
         else:
