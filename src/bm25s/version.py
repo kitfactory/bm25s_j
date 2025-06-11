@@ -14,7 +14,7 @@ VERSION_INFO = (0, 2, 0)
 
 # Release information
 # リリース情報
-RELEASE_DATE = "2024-12-20"
+RELEASE_DATE = "2025-06-11"
 RELEASE_NOTES = """
 Release 0.2.0: Advanced Metadata Filtering
 リリース 0.2.0: 高度なメタデータフィルタリング
